@@ -31,7 +31,7 @@ public class JarMyApplication
 ```
 
 
-Build a single jar, for example using `maven-assembly-plugin`:
+Build a single jar with main class `JarMyApplication`, for example using `maven-assembly-plugin`:
 
 ```xml
 			<plugin>
@@ -158,7 +158,7 @@ The following is supported:
 
 Extracting JAR files at the beginning runs in parallel, so more CPUs can bring benefit.
 
-Test on 67 MB application on 8 CPU 2020 laptop showed 109 ms for the initialization.
+Test on 67 MB application on 4-core (8 hyperthreads) Intel 1185G7 or Graviton-3 showed 90-110 ms for the initialization.
 
 
 ## Examples
@@ -173,9 +173,10 @@ The code is released under version 2.0 of the [Apache License][].
 
 ## Authors
 
-Zbynek Vyskovsky - kvr000@gmail.com and https://github.com/kvr000/ and https://github.com/dryuf/ and https://www.linkedin.com/in/zbynek-vyskovsky/
+Zbynek Vyskovsky - kvr000@gmail.com and https://github.com/kvr000/ and https://github.com/dryuf/ and
+https://www.linkedin.com/in/zbynek-vyskovsky/ .
 
-Originally inspired by JarClassLoader but completely rewritten with modern Java 8+ features.
+Originally inspired by JarClassLoader but completely rewritten with Java 8 features and improved performance in mind.
 
 
 [Apache License]: http://www.apache.org/licenses/LICENSE-2.0

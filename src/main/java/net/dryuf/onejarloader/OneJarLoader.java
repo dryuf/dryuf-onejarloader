@@ -1,3 +1,18 @@
+/*
+ * Copyright 2024 Zbynek Vyskovsky (https://www.linkedin.com/in/zbynek-vyskovsky/ https://github.com/kvr000/)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package net.dryuf.onejarloader;
 
 import lombok.Getter;
@@ -44,6 +59,7 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.jar.Attributes.Name;
@@ -158,13 +174,18 @@ public class OneJarLoader extends ClassLoader
 				catch (IOException e) {
 					throw new OneJarLoaderException("Failed to list directory: directory=" + mainJarUrl + " : " + e.getMessage(), e);
 				}
-				jarFiles = files.stream()
-					.map(file -> loadFileJar(null, file))
-					.collect(Collectors.toList())
-					.stream()
-					.map(CompletableFuture::join)
-					.flatMap(List::stream)
-					.collect(Collectors.toList());
+				try {
+					jarFiles = files.stream()
+						.map(file -> loadFileJar(null, file))
+						.collect(Collectors.toList())
+						.stream()
+						.map(OneJarLoader::sneakyFutureGet)
+						.flatMap(List::stream)
+						.collect(Collectors.toList());
+				}
+				catch (Exception ex) {
+					throw new OneJarLoaderException("Failed to process jars: " + ex, ex);
+				}
 			}
 			else {
 				// Launched from jar:
@@ -177,8 +198,13 @@ public class OneJarLoader extends ClassLoader
 				catch (IOException ex) {
 					throw new OneJarLoaderException("Failed to open top JarFile: " + fileJar, ex);
 				}
-				JarFileInfo jarFileInfo = createJarFileInfoFromParent(null, fileJar.getAbsolutePath(), topJarUrl, jarFile, null);
-				jarFiles = traverseJarFile(jarFileInfo).join();
+				try {
+					JarFileInfo jarFileInfo = createJarFileInfoFromParent(null, fileJar.getAbsolutePath(), topJarUrl, jarFile, null);
+					jarFiles = sneakyFutureGet(traverseJarFile(jarFileInfo));
+				}
+				catch (Exception ex) {
+					throw new OneJarLoaderException("Failed to process jars: " + ex, ex);
+				}
 			}
 		}
 		else {
@@ -205,27 +231,65 @@ public class OneJarLoader extends ClassLoader
 	 * @throws Exception
 	 *      when an error occurs.
 	 */
-	public void invokeMain(String className, String[] args) throws Exception {
-		Thread.getAllStackTraces().keySet().forEach(t -> {
-			try {
-				t.setContextClassLoader(this);
+	public void invokeMain(String className, String[] args) throws Exception
+	{
+		invokeCallable(() -> {
+			Class<?> clazz = loadClass(className);
+			loggerClass.info("Executing: classLoader=%s class=%s method=%s", clazz.getClassLoader(), className, "main");
+			Method m = clazz.getMethod("main", String[].class);
+
+			int modifiers = m.getModifiers();
+
+			if (!Modifier.isPublic(modifiers) || !Modifier.isStatic(modifiers) || m.getReturnType() != void.class) {
+				throw new NoSuchMethodException("The main() method in class is not public static void: " + m);
 			}
-			catch (SecurityException ex) {
-				// ignore, likely internal thread
-			}
+
+			return m.invoke(null, (Object) args);
 		});
+	}
 
-		Class<?> clazz = loadClass(className);
-		loggerClass.info("Executing main: classLoader=%s class=%s", clazz.getClassLoader(), className);
-		Method method = clazz.getMethod("main", String[].class);
+	public <R> R invokeStatic(String className, String method, Class<?>[] signature, Object[] args) throws Exception
+	{
+		return invokeCallable(() -> {
+			Class<?> clazz = loadClass(className);
+			loggerClass.info("Executing: classLoader=%s class=%s method=%s", clazz.getClassLoader(), className, method);
+			Method m = clazz.getMethod(method, signature);
 
-		int modifiers = method.getModifiers();
+			int modifiers = m.getModifiers();
 
-		if (!Modifier.isPublic(modifiers) || !Modifier.isStatic(modifiers) || method.getReturnType() != void.class) {
-			throw new NoSuchMethodException("The main() method in class is not public static void: " + method);
+			if (!Modifier.isStatic(modifiers)) {
+				throw new NoSuchMethodException("The main() method in class is not public static void: " + m);
+			}
+
+			@SuppressWarnings("unchecked")
+			R result = (R) m.invoke(null, (Object) args);
+			return result;
+		});
+	}
+
+	public <R> R invokeCallable(Callable<R> callable) throws Exception
+	{
+		// Set this ClassLoader for all threads
+		// Repeat until no new threads were launched (this is extremely unlikely but may happen)
+		for (HashSet<Thread> seen = new HashSet<>(); ; ) {
+			boolean changed = false;
+			for (Thread thread: Thread.getAllStackTraces().keySet()) {
+				if (seen.add(thread)) {
+					try {
+						thread.setContextClassLoader(this);
+						changed = true;
+					}
+					catch (Throwable ex) {
+						// ignore result, some unmodifiable internal thread
+					}
+				}
+			};
+			if (!changed) {
+				break;
+			}
 		}
 
-		method.invoke(null, (Object) args);
+		return callable.call();
 	}
 
 	@Override
@@ -346,14 +410,20 @@ public class OneJarLoader extends ClassLoader
 				JarFile jarFile = new JarFile(file);
 				return createJarFileInfoFromParent(parent, file.getAbsolutePath(), url, jarFile, file);
 			}))
-			.thenCompose((jarFileInfo) -> jarFileInfo == null ?
-				CompletableFuture.completedFuture(Collections.emptyList()) :
+			.thenCompose((JarFileInfo jarFileInfo) -> jarFileInfo == null ?
+				CompletableFuture.completedFuture(Collections.<JarFileInfo>emptyList()) :
 				traverseJarFile(jarFileInfo)
-					.thenApply((l) -> {
+					.thenApply((List<JarFileInfo> l) -> {
 						l.add(0, jarFileInfo);
 						return l;
 					})
-			);
+			)
+			.handle((result, ex) -> {
+				if (ex != null) {
+					throw sneakyThrow(new IOException("Failed to process jar: " + inf.getURL() + " : " + ex, ex));
+				}
+				return result;
+			});
 	}
 
 	private CompletableFuture<List<JarFileInfo>> traverseJarFile(JarFileInfo jarFileInfo)
@@ -374,7 +444,7 @@ public class OneJarLoader extends ClassLoader
 		}
 		return CompletableFuture.allOf(children.toArray(new CompletableFuture[children.size()]))
 			.thenApply((v) -> children.stream()
-				.flatMap(future ->future.join().stream())
+				.flatMap(future -> sneakyFutureGet(future).stream())
 				.collect(Collectors.toList())
 			);
 	}
@@ -604,13 +674,23 @@ public class OneJarLoader extends ClassLoader
 	}
 
 	@SneakyThrows
-	private <X extends Throwable> RuntimeException sneakyThrow(X ex)
+	static <X extends Throwable> RuntimeException sneakyThrow(X ex)
 	{
 		throw ex;
 	}
 
+	@SneakyThrows
+	static <R> R sneakyFutureGet(CompletableFuture<R> future)
+	{
+		try {
+			return future.get();
+		}
+		catch (ExecutionException ex) {
+			throw ex.getCause();
+		}
+	}
 
-	private <R> Supplier<R> sneakySupplier(Callable<R> callable)
+	static <R> Supplier<R> sneakySupplier(Callable<R> callable)
 	{
 		return () -> {
 			try {
