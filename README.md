@@ -10,7 +10,7 @@ application as single jar.
 <dependency>
 	<groupId>net.dryuf</groupId>
 	<artifactId>dryuf-onejarloader</artifactId>
-	<version>1.0.0</version>
+	<version>1.0.1</version>
 </dependency>
 ```
 
