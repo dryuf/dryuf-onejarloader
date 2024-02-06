@@ -4,7 +4,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>net.dryuf</groupId>
 	<artifactId>dryuf-onejarloader-it-exec_main</artifactId>
-	<version>1.0.1</version>
+	<version>1.0.2</version>
 	<name>dryuf-onejarloader-it-exec_main</name>
 	<description>OneJarLoader exec_main - integration test</description>
 	<packaging>jar</packaging>
