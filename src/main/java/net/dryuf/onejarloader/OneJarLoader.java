@@ -52,6 +52,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.ListIterator;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -501,6 +502,10 @@ public class OneJarLoader extends ClassLoader
 		String fullPath = System.getProperty("os.name") + "/" + System.getProperty("os.arch") + "/" + sysName;
 
 		JarEntryInfo entry = findJarEntry(fullPath);
+		if (entry == null) {
+			fullPath = System.getProperty("os.name").toLowerCase(Locale.ROOT) + "/" + System.getProperty("os.arch").toLowerCase(Locale.ROOT) + "/" + sysName;
+			entry = findJarEntry(fullPath);
+		}
 		if (entry == null) {
 			entry = findJarEntry(sysName);
 		}

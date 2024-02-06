@@ -21,6 +21,7 @@
 
 		<log4j.version>2.2</log4j.version>
 		<commons-io.version>2.6</commons-io.version>
+		<zstd-jni.version>1.5.5-11</zstd-jni.version>
 
 		<testng.version>7.7.0</testng.version>
 
@@ -106,6 +107,12 @@
 			<groupId>commons-io</groupId>
 			<artifactId>commons-io</artifactId>
 			<version>${commons-io.version}</version>
+		</dependency>
+
+		<dependency>
+			<groupId>com.github.luben</groupId>
+			<artifactId>zstd-jni</artifactId>
+			<version>${zstd-jni.version}</version>
 		</dependency>
 
 	</dependencies>

@@ -36,6 +36,12 @@ public class ExecuteIT
 		executeGeneric(new String[]{ "java", "-cp", "target/dryuf-onejarloader-it-exec_main.jar", "net.dryuf.onejarloader.it.exec_main.JarExecuteResource" }, "I_DID_SUCCEED_RESOURCE\n");
 	}
 
+	@Test
+	public void executeNative() throws Exception
+	{
+		executeGeneric(new String[]{ "java", "-cp", "target/dryuf-onejarloader-it-exec_main.jar", "net.dryuf.onejarloader.it.exec_main.JarExecuteNative" }, "I_DID_SUCCEED_NATIVE\n");
+	}
+
 	public void executeGeneric(String[] args, String expected) throws Exception
 	{
 		Process process = new ProcessBuilder(args)

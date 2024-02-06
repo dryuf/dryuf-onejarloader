@@ -1,6 +1,5 @@
 package net.dryuf.onejarloader.it.exec_main;
 
-
 import org.apache.commons.io.IOUtils;
 
 import java.io.InputStream;
